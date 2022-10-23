@@ -7,6 +7,7 @@
     <groupId>com.atguigu.gmall</groupId>
     <artifactId>gmall-parent</artifactId>
     <version>1.0</version>
+
     <modules>
         <module>common</module>
         <module>model</module>
@@ -25,6 +26,23 @@
     <packaging>pom</packaging>
 
     <!--定义jar包的版本号-->
+<!--    <properties>
+        <java.version>1.8</java.version>
+        <cloud.version>Hoxton.SR8</cloud.version>
+        <alibaba.version>2.2.5.RELEASE</alibaba.version>
+        <gmall.version>1.0</gmall.version>
+        <mybatis-plus.version>3.4.1</mybatis-plus.version>
+        <mysql.version>5.1.46</mysql.version>
+        <swagger.version>2.7.0</swagger.version>
+        <lombok.version>1.18.10</lombok.version>
+        <fastjson.version>1.2.29</fastjson.version>
+        <redisson.version>3.15.3</redisson.version>
+        <pool2.version>2.6.0</pool2.version>
+        <httpclient.version>4.5.13</httpclient.version>
+    </properties>-->
+
+
+    <!--定义jar包的版本号-->
     <properties>
         <java.version>1.8</java.version>
         <cloud.version>Hoxton.RELEASE</cloud.version>
@@ -38,6 +56,8 @@
 
         <!--自己添加，为了防止项目报错-->
         <redisson.version>3.17.7</redisson.version>
+        <fastjson.version>1.2.29</fastjson.version>
+        <httpclient.version>4.5.13</httpclient.version>
     </properties>
 
     <!--配置dependencyManagement锁定依赖的版本 并不是实际的依赖。-->
@@ -101,6 +121,18 @@
                 <groupId>org.redisson</groupId>
                 <artifactId>redisson</artifactId>
                 <version>${redisson.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.alibaba</groupId>
+                <artifactId>fastjson</artifactId>
+                <version>${fastjson.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>org.apache.httpcomponents</groupId>
+                <artifactId>httpclient</artifactId>
+                <version>${httpclient.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>
