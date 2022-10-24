@@ -6,6 +6,8 @@ import com.atguigu.gmall.product.service.ManagerService;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import javafx.scene.control.cell.PropertyValueFactory;
+import org.checkerframework.checker.units.qual.A;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -41,13 +43,188 @@ public class ManagerServiceImpl implements ManagerService {
     @Autowired
     private SpuInfoMapper spuInfoMapper;
 
+    @Autowired
+    private SpuSaleAttrMapper spuSaleAttrMapper;
+
+
+    @Autowired
+    private SpuSaleAttrValueMapper spuSaleAttrValueMapper;
+
+    @Autowired
+    private SpuImageMapper spuImageMapper;
+
+    @Autowired
+    private BaseSaleAttrMapper baseSaleAttrMapper;
+
+    @Autowired
+    private spuPosterMapper spuPosterMapper;
+
+    @Autowired
+    private SkuInfoMapper skuInfoMapper;
+
+    @Autowired
+    private SkuImageMapper skuImageMapper;
+
+    @Autowired
+    private SkuSaleAttrValueMapper skuSaleAttrValueMapper;
+
+    @Autowired
+    private SkuAttrValueMapper skuAttrValueMapper;
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void saveSkuInfo(SkuInfo skuInfo) {
+    /*
+        skuInfo 库存单元表 --- spuInfo！
+        skuImage 库存单元图片表 --- spuImage!
+        skuSaleAttrValue sku销售属性值表{sku与销售属性值的中间表} --- skuInfo ，spuSaleAttrValue
+        skuAttrValue sku与平台属性值的中间表 --- skuInfo ，baseAttrValue
+     */
+        skuInfoMapper.insert(skuInfo);
+        List<SkuImage> skuImageList = skuInfo.getSkuImageList();
+        if (skuImageList != null && skuImageList.size() > 0) {
+            // 循环遍历
+            for (SkuImage skuImage : skuImageList) {
+                skuImage.setSkuId(skuInfo.getId());
+                skuImageMapper.insert(skuImage);
+            }
+        }
+
+        List<SkuSaleAttrValue> skuSaleAttrValueList = skuInfo.getSkuSaleAttrValueList();
+        // 调用判断集合方法
+        if (!CollectionUtils.isEmpty(skuSaleAttrValueList)) {
+            for (SkuSaleAttrValue skuSaleAttrValue : skuSaleAttrValueList) {
+                skuSaleAttrValue.setSkuId(skuInfo.getId());
+                skuSaleAttrValue.setSpuId(skuInfo.getSpuId());
+                skuSaleAttrValueMapper.insert(skuSaleAttrValue);
+            }
+        }
+
+        List<SkuAttrValue> skuAttrValueList = skuInfo.getSkuAttrValueList();
+        if (!CollectionUtils.isEmpty(skuAttrValueList)) {
+            for (SkuAttrValue skuAttrValue : skuAttrValueList) {
+                skuAttrValue.setSkuId(skuInfo.getId());
+                skuAttrValueMapper.insert(skuAttrValue);
+            }
+        }
+    }
+
+    /**
+     * Sku分页查询
+     *
+     * @param infoPage
+     * @return
+     */
+    @Override
+    public IPage<SkuInfo> list(Page<SkuInfo> infoPage) {
+        IPage<SkuInfo> page = skuInfoMapper.selectPage(infoPage, new QueryWrapper<SkuInfo>().orderByAsc("id"));
+        return page;
+    }
+
+
+    /**
+     * 获取该SPU下的所有销售属性
+     *
+     * @param spuId
+     * @return
+     */
+    @Override
+    public List<SpuSaleAttr> getSpuSaleAttrList(Long spuId) {
+        return spuSaleAttrMapper.getSpuSaleAttrList(spuId);
+    }
+
+
+    /**
+     * 根据spuId获取所有的图片列表
+     *
+     * @param spuId
+     * @return
+     */
+    @Override
+    public List<SpuImage> getSpuImageList(Long spuId) {
+        QueryWrapper<SpuImage> wrapper = new QueryWrapper<>();
+        wrapper.eq("spu_id", spuId);
+        List<SpuImage> spuImageList = spuImageMapper.selectList(wrapper);
+        return spuImageList;
+    }
+
+
+    /**
+     * 获取所有的销售属性
+     *
+     * @return
+     */
+    @Override
+    public List<BaseSaleAttr> baseSaleAttrList() {
+
+        QueryWrapper<BaseSaleAttr> wrapper = new QueryWrapper<>();
+        wrapper.orderByAsc("id");
+        return baseSaleAttrMapper.selectList(wrapper);
+    }
+
+
+    /**
+     * 保存Spu相关信息
+     *
+     * @param spuInfo
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void saveSpuInfo(SpuInfo spuInfo) {
+        // 保存spu_info基础信息
+        spuInfoMapper.insert(spuInfo);
+
+        // 保存spu_sale_attr，和销售属性中间表
+        List<SpuSaleAttr> spuSaleAttrList = spuInfo.getSpuSaleAttrList();
+        if (!CollectionUtils.isEmpty(spuSaleAttrList)) {
+            for (SpuSaleAttr spuSaleAttr : spuSaleAttrList) {
+                // 保存该spu下的一个属性
+                spuSaleAttr.setSpuId(spuInfo.getId());
+                spuSaleAttrMapper.insert(spuSaleAttr);
+
+                // 保存该属性下所有的属性值
+                List<SpuSaleAttrValue> spuSaleAttrValueList = spuSaleAttr.getSpuSaleAttrValueList();
+                if (!CollectionUtils.isEmpty(spuSaleAttrValueList)) {
+                    for (SpuSaleAttrValue spuSaleAttrValue : spuSaleAttrValueList) {
+                        spuSaleAttrValue.setSpuId(spuInfo.getId());
+                        spuSaleAttrValue.setSaleAttrName(spuSaleAttr.getSaleAttrName());
+                        spuSaleAttrValueMapper.insert(spuSaleAttrValue);
+                    }
+                }
+
+            }
+        }
+
+        // 保存spu_image
+        List<SpuImage> spuImageList = spuInfo.getSpuImageList();
+        if (!CollectionUtils.isEmpty(spuImageList)) {
+            for (SpuImage spuImage : spuImageList) {
+                spuImage.setSpuId(spuInfo.getId());
+                spuImageMapper.insert(spuImage);
+            }
+        }
+
+        //  获取到posterList 集合数据
+        List<SpuPoster> spuPosterList = spuInfo.getSpuPosterList();
+        //  判断不为空
+        if (!CollectionUtils.isEmpty(spuPosterList)) {
+            for (SpuPoster spuPoster : spuPosterList) {
+                //  需要将spuId 赋值
+                spuPoster.setSpuId(spuInfo.getId());
+                //  保存spuPoster
+                spuPosterMapper.insert(spuPoster);
+            }
+
+
+        }
+    }
 
     /**
      * 分页查询SPuInfo
      *
-     * @return
      * @param infoPage
      * @param category3Id
+     * @return
      */
     @Override
     public IPage<SpuInfo> getSpuInfoPage(Page<SpuInfo> infoPage, Long category3Id) {
@@ -67,9 +244,9 @@ public class ManagerServiceImpl implements ManagerService {
 
         List<BaseAttrValue> values = getAttrValueListByAttrId(atrrId);
 
-        if (!CollectionUtils.isEmpty(values)){
-             attrInfo.setAttrValueList(values);
-             return attrInfo;
+        if (!CollectionUtils.isEmpty(values)) {
+            attrInfo.setAttrValueList(values);
+            return attrInfo;
         }
 
         return attrInfo;
@@ -77,6 +254,7 @@ public class ManagerServiceImpl implements ManagerService {
 
     /**
      * 根据属性id获取属性值集合
+     *
      * @param atrrId
      * @return
      */

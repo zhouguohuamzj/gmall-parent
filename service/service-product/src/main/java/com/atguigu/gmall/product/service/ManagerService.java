@@ -59,4 +59,43 @@ public interface ManagerService {
     IPage<SpuInfo> getSpuInfoPage(Page<SpuInfo> infoPage, Long category3Id);
 
 
+    /**
+     * 保存Spu相关信息
+     * @param spuInfo
+     */
+    void saveSpuInfo(SpuInfo spuInfo);
+
+    /**
+     * 获取所有的销售属性
+     * @return
+     */
+    List<BaseSaleAttr> baseSaleAttrList();
+
+    /**
+     * 根据spuId获取所有的图片列表
+     * @param spuId
+     * @return
+     */
+    List<SpuImage> getSpuImageList(Long spuId);
+
+    /**
+     * 获取该SPU下的所有销售属性
+     * @param spuId
+     * @return
+     */
+    List<SpuSaleAttr> getSpuSaleAttrList(Long spuId);
+
+    /**
+     * 保存sku相关信息
+     * @param skuInfo
+     */
+    void saveSkuInfo(SkuInfo skuInfo);
+
+    /**
+     * Sku分页查询
+     * @param infoPage
+     * @return
+     */
+    IPage<SkuInfo> list(Page<SkuInfo> infoPage);
+
 }
