@@ -1,19 +1,22 @@
 package com.atguigu.gmall.product.service.impl;
 
+import com.atguigu.gmall.common.constant.RedisConst;
 import com.atguigu.gmall.model.product.*;
 import com.atguigu.gmall.product.mapper.*;
 import com.atguigu.gmall.product.service.ManagerService;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import javafx.scene.control.cell.PropertyValueFactory;
-import org.checkerframework.checker.units.qual.A;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
 
-import java.util.List;
+import java.math.BigDecimal;
+import java.util.*;
+import java.util.concurrent.TimeUnit;
 
 /**
  * @description:
@@ -70,6 +73,195 @@ public class ManagerServiceImpl implements ManagerService {
 
     @Autowired
     private SkuAttrValueMapper skuAttrValueMapper;
+
+    @Autowired
+    private BaseCategoryViewMapper baseCategoryViewMapper;
+
+    @Autowired
+    private RedisTemplate redisTemplate;
+
+    /**
+     * 根据skuId 获取平台属性数据
+     *
+     * @param skuId
+     * @return
+     */
+    @Override
+    public List<BaseAttrInfo> getAttrListBySkuId(Long skuId) {
+        return baseAttrInfoMapper.getAttrListBySkuId(skuId);
+    }
+
+    /**
+     * 根据spuId 获取到销售属性值Id 与skuId 组成的数据集
+     *
+     * @param spuId
+     * @return
+     */
+    @Override
+    public Map getSkuValueIdsMap(Long spuId) {
+        List<Map> mapList = skuSaleAttrValueMapper.getSkuValueIdsMap(spuId);
+        Map<Object, Object> map = new HashMap<>();
+        if (mapList != null && mapList.size() > 0) {
+            // 循环遍历
+            for (Map skuMap : mapList) {
+                // key = 125|123 ,value = 37
+                map.put(skuMap.get("value_ids"), skuMap.get("sku_id"));
+            }
+        }
+        return map;
+
+    }
+
+    /**
+     * 根据spuId,skuId 获取销售属性数据,标志已选中的值
+     *
+     * @param skuId
+     * @param spuId
+     * @return
+     */
+    @Override
+    public List<SpuSaleAttr> getSpuSaleAttrListCheckBySku(Long skuId, Long spuId) {
+        return spuSaleAttrMapper.getSpuSaleAttrListCheckBySku(skuId, spuId);
+    }
+
+    /**
+     * 根据三级分类id查询分类信息
+     *
+     * @param category3Id
+     * @return
+     */
+    @Override
+    public BaseCategoryView getCategoryViewById(Long category3Id) {
+        return baseCategoryViewMapper.selectById(category3Id);
+    }
+
+    /**
+     * 根据spuId 获取海报数据
+     *
+     * @param spuId
+     * @return
+     */
+    @Override
+    public List<SpuPoster> findSpuPosterBySpuId(Long spuId) {
+        QueryWrapper<SpuPoster> wrapper = new QueryWrapper<>();
+        wrapper.eq("spu_id", spuId);
+        List<SpuPoster> spuPosterList = spuPosterMapper.selectList(wrapper);
+        return spuPosterList;
+    }
+
+    /**
+     * 根据skuId获取SkuInfo与价格
+     *
+     * @param skuId
+     * @return
+     */
+    @Override
+    public BigDecimal getSkuPriceById(Long skuId) {
+        SkuInfo skuInfo = skuInfoMapper.selectById(skuId);
+        if (skuInfo != null) {
+            return skuInfo.getPrice();
+        }
+        return new BigDecimal("0");
+    }
+
+    /**
+     * 根据skuId获取SkuInfo与图片信息
+     *
+     * @param skuId
+     * @return
+     */
+    @Override
+    public SkuInfo getSkuInfo(Long skuId) {
+
+        SkuInfo skuInfo = null;
+        try {
+            // 先从缓存中获取数据
+            String skuKey = RedisConst.SKUKEY_PREFIX + skuId + RedisConst.SKUKEY_SUFFIX;
+            skuInfo = (SkuInfo) redisTemplate.opsForValue().get(skuKey);
+
+            // 判断从缓存中的数据是否为空
+            if (skuInfo == null) {
+                // 直接从数据库取数据可能会造成缓存击穿
+                // 上锁
+                String lockKey = RedisConst.SKUKEY_PREFIX + skuId + RedisConst.SKULOCK_SUFFIX;
+                // 定义锁的值
+                String uuid = UUID.randomUUID().toString().replace("-", "");
+                Boolean luck = redisTemplate.opsForValue().setIfAbsent(lockKey, uuid, RedisConst.SKULOCK_EXPIRE_PX2, TimeUnit.SECONDS);
+                if (luck) {
+                    // 上锁成功， 从数据库里面读取数据
+                    skuInfo = getSkuInfoDB(skuId);
+                    if (skuInfo == null) {
+                        // 避免缓存穿透， 将空对象放入缓存
+                        SkuInfo skuInfo1 = new SkuInfo();
+                        //对象的地址
+                        redisTemplate.opsForValue().set(skuKey, skuInfo1, RedisConst.SKUKEY_TEMPORARY_TIMEOUT, TimeUnit.SECONDS);
+                        return skuInfo1;
+                    }
+                    // 查询数据库，有值放入数据库
+                    redisTemplate.opsForValue().set(skuKey, skuInfo, RedisConst.SKUKEY_TIMEOUT, TimeUnit.SECONDS);
+                    // 解锁：使用lua 脚本解锁
+                    String script = "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end";
+                    // 设置lua脚本返回的数据类型
+                    DefaultRedisScript<Long> redisScript = new DefaultRedisScript<>();
+                    // 设置lua脚本返回类型为Long
+                    redisScript.setResultType(Long.class);
+                    redisScript.setScriptText(script);
+                    // 删除key 所对应的 value
+                    redisTemplate.execute(redisScript, Arrays.asList(lockKey), uuid);
+                    return skuInfo;
+                } else {
+                    // 其他线程等待
+                    Thread.sleep(1000);
+                    return getSkuInfo(skuId);
+                }
+            } else {
+                // 缓存中有值
+                return skuInfo;
+            }
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+
+        // 为了防止缓存宕机：从数据库中获取数据
+        return getSkuInfoDB(skuId);
+    }
+
+    private SkuInfo getSkuInfoDB(Long skuId) {
+        // 获取skuInfo基本信息
+        SkuInfo skuInfo = skuInfoMapper.selectById(skuId);
+        // 获取skuInfo图片信息
+        QueryWrapper<SkuImage> imageQueryWrapper = new QueryWrapper<>();
+        imageQueryWrapper.eq("sku_id", skuId);
+        List<SkuImage> skuImageList = skuImageMapper.selectList(imageQueryWrapper);
+        skuInfo.setSkuImageList(skuImageList);
+        return skuInfo;
+    }
+
+    /**
+     * 商品的下架
+     *
+     * @param skuId
+     */
+    @Override
+    public void cancelSale(Long skuId) {
+        SkuInfo skuInfo = new SkuInfo();
+        skuInfo.setId(skuId);
+        skuInfo.setIsSale(0);
+        skuInfoMapper.updateById(skuInfo);
+    }
+
+    /**
+     * 商品的上架
+     *
+     * @param skuId
+     */
+    @Override
+    public void onSale(Long skuId) {
+        SkuInfo skuInfo = new SkuInfo();
+        skuInfo.setId(skuId);
+        skuInfo.setIsSale(1);
+        skuInfoMapper.updateById(skuInfo);
+    }
 
     @Override
     @Transactional(rollbackFor = Exception.class)

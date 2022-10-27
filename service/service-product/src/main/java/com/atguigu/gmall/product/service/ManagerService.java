@@ -4,7 +4,9 @@ import com.atguigu.gmall.model.product.*;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 
+import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 
 public interface ManagerService {
     /**
@@ -98,4 +100,66 @@ public interface ManagerService {
      */
     IPage<SkuInfo> list(Page<SkuInfo> infoPage);
 
+    /**
+     * 商品的上架
+     * @param skuId
+     */
+    void onSale(Long skuId);
+
+    /**
+     * 商品的下架
+     * @param skuId
+     */
+    void cancelSale(Long skuId);
+
+
+    /**
+     * 根据skuId获取SkuInfo
+     * @param skuId
+     * @return
+     */
+    SkuInfo getSkuInfo(Long skuId);
+
+    /**
+     * 根据skuId获取SkuInfo与图片信息
+     * @param skuId
+     * @return
+     */
+    BigDecimal getSkuPriceById(Long skuId);
+
+    /**
+     * 根据spuId 获取海报数据
+     * @param spuId
+     * @return
+     */
+    List<SpuPoster> findSpuPosterBySpuId(Long spuId);
+
+    /**
+     * 根据三级分类id查询分类信息
+     * @param category3Id
+     * @return
+     */
+    BaseCategoryView getCategoryViewById(Long category3Id);
+
+    /**
+     * 根据spuId,skuId 获取销售属性数据,标志已选中的值
+     * @param skuId
+     * @param spuId
+     * @return
+     */
+    List<SpuSaleAttr> getSpuSaleAttrListCheckBySku(Long skuId, Long spuId);
+
+    /**
+     * 根据spuId 获取到销售属性值Id 与skuId 组成的数据集
+     * @param spuId
+     * @return
+     */
+    Map getSkuValueIdsMap(Long spuId);
+
+    /**
+     * 根据skuId 获取平台属性数据
+     * @param skuId
+     * @return
+     */
+    List<BaseAttrInfo> getAttrListBySkuId(Long skuId);
 }
