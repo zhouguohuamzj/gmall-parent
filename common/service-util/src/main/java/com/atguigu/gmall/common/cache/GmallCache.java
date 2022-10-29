@@ -1,18 +1,18 @@
 package com.atguigu.gmall.common.cache;
 
-import java.lang.annotation.*;
 
-/**
- * @author atguigu-mqx
- */
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
+
 @Target({ElementType.METHOD})
 @Retention(RetentionPolicy.RUNTIME)
-@Inherited
-@Documented
 public @interface GmallCache {
 
-    //  定义一个数据 sku:skuId
-    //  目的用这个前缀要想组成 缓存的key！
+    // 缓存的前缀
     String prefix() default "cache:";
 
+    // 缓存的后缀
+    String suffix() default ":info";
 }

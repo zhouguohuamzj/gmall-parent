@@ -11,6 +11,10 @@ import java.math.BigDecimal;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 /**
@@ -27,6 +31,10 @@ public class ItemServiceImpl implements ItemService {
     private ProductFeignClient productFeignClient;
 
 
+    @Autowired
+    private ThreadPoolExecutor executor;
+
+
     /**
      * 用于远程调用service-product获取数据，进行汇总
      *
@@ -38,42 +46,74 @@ public class ItemServiceImpl implements ItemService {
         //  声明对象
         Map<String, Object> result = new HashMap<>();
 
-        //  获取到的数据是skuInfo + skuImageList
-        SkuInfo skuInfo = productFeignClient.getSkuInfo(skuId);
+        CompletableFuture<SkuInfo> skuInfoCompletableFuture = CompletableFuture.supplyAsync(new Supplier<SkuInfo>() {
+            @Override
+            public SkuInfo get() {
+                //  获取到的数据是skuInfo + skuImageList
+                SkuInfo skuInfo = productFeignClient.getSkuInfo(skuId);
+                result.put("skuInfo", skuInfo);
+                return skuInfo;
+            }
+        }, executor);
 
-        //  判断skuInfo 不为空
-        if (skuInfo != null) {
-            //  获取分类数据
-            BaseCategoryView categoryView = productFeignClient.getCategoryView(skuInfo.getCategory3Id());
-            result.put("categoryView", categoryView);
-            //  获取销售属性+销售属性值
-            List<SpuSaleAttr> spuSaleAttrListCheckBySku = productFeignClient.getSpuSaleAttrListCheckBySku(skuId, skuInfo.getSpuId());
-            result.put("spuSaleAttrList", spuSaleAttrListCheckBySku);
+        // 销售属性-销售属性值回显并锁定
+        CompletableFuture<Void> spuSaleAttrCompletableFuture = skuInfoCompletableFuture.thenAcceptAsync(new Consumer<SkuInfo>() {
+            @Override
+            public void accept(SkuInfo skuInfo) {
+                //  获取销售属性+销售属性值
+                List<SpuSaleAttr> spuSaleAttrListCheckBySku = productFeignClient.getSpuSaleAttrListCheckBySku(skuId, skuInfo.getSpuId());
+                result.put("spuSaleAttrList", spuSaleAttrListCheckBySku);
+            }
+        }, executor);
+
+        CompletableFuture<Void> skuValueIdsMapCompletableFuture = skuInfoCompletableFuture.thenAcceptAsync((skuInfo -> {
             //  查询销售属性值Id 与skuId 组合的map
             Map skuValueIdsMap = productFeignClient.getSkuValueIdsMap(skuInfo.getSpuId());
             //  将这个map 转换为页面需要的Json 对象
             String valueJson = JSON.toJSONString(skuValueIdsMap);
             result.put("valuesSkuJson", valueJson);
+        }), executor);
 
-        }
-        //  获取价格
-        BigDecimal skuPrice = productFeignClient.getSkuPrice(skuId);
-        //  map 中 key 对应的谁? Thymeleaf 获取数据的时候 ${skuInfo.skuName}
-        result.put("skuInfo", skuInfo);
-        result.put("price", skuPrice);
-        //  返回map 集合 Thymeleaf 渲染：能用map 存储数据！
-        //  spu海报数据
-        List<SpuPoster> spuPosterList = productFeignClient.getSpuPosterBySpuId(skuInfo.getSpuId());
-        result.put("spuPosterList", spuPosterList);
-        List<BaseAttrInfo> attrList = productFeignClient.getAttrList(skuId);
-        //  使用拉姆达表示
-        List<Map<String, String>> skuAttrList = attrList.stream().map((baseAttrInfo) -> {
-            Map<String, String> attrMap = new HashMap<>();
-            attrMap.put("attrName", baseAttrInfo.getAttrName());
-            attrMap.put("attrValue", baseAttrInfo.getAttrValueList().get(0).getValueName());
-            return attrMap;
-        }).collect(Collectors.toList());
-        result.put("skuAttrList", skuAttrList);
+        CompletableFuture<Void> categoryViewCompletableFuture = skuInfoCompletableFuture.thenAcceptAsync((skuInfo -> {
+            //  获取分类数据
+            BaseCategoryView categoryView = productFeignClient.getCategoryView(skuInfo.getCategory3Id());
+            result.put("categoryView", categoryView);
+        }), executor);
+
+        //获取商品最新价格
+        CompletableFuture<Void> skuPriceCompletableFuture = CompletableFuture.runAsync(() -> {
+            BigDecimal skuPrice = productFeignClient.getSkuPrice(skuId);
+            result.put("price", skuPrice);
+        }, executor);
+
+
+        //  获取海报数据
+        CompletableFuture<Void> spuPosterListCompletableFuture = skuInfoCompletableFuture.thenAcceptAsync(skuInfo -> {
+            //  spu海报数据
+            List<SpuPoster> spuPosterList = productFeignClient.getSpuPosterBySpuId(skuInfo.getSpuId());
+            result.put("spuPosterList", spuPosterList);
+        }, executor);
+
+        //  获取sku平台属性，即规格数据
+        CompletableFuture<Void> skuAttrListCompletableFuture = CompletableFuture.runAsync(() -> {
+            List<BaseAttrInfo> attrList = productFeignClient.getAttrList(skuId);
+            //  使用拉姆达表示
+            List<Map<String, String>> skuAttrList = attrList.stream().map((baseAttrInfo) -> {
+                Map<String, String> attrMap = new HashMap<>();
+                attrMap.put("attrName", baseAttrInfo.getAttrName());
+                attrMap.put("attrValue", baseAttrInfo.getAttrValueList().get(0).getValueName());
+                return attrMap;
+            }).collect(Collectors.toList());
+            result.put("skuAttrList", skuAttrList);
+        }, executor);
+
+
+        CompletableFuture.allOf(skuInfoCompletableFuture,
+                spuSaleAttrCompletableFuture,
+                skuValueIdsMapCompletableFuture,
+                skuPriceCompletableFuture, categoryViewCompletableFuture,
+                spuPosterListCompletableFuture, skuAttrListCompletableFuture).join();
+
 
         return result;
     }

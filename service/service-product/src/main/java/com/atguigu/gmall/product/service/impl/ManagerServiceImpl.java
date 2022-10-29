@@ -1,5 +1,7 @@
 package com.atguigu.gmall.product.service.impl;
 
+import com.alibaba.fastjson.JSONObject;
+import com.atguigu.gmall.common.cache.GmallCache;
 import com.atguigu.gmall.common.constant.RedisConst;
 import com.atguigu.gmall.model.product.*;
 import com.atguigu.gmall.product.mapper.*;
@@ -7,7 +9,11 @@ import com.atguigu.gmall.product.service.ManagerService;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import org.redisson.Redisson;
+import org.redisson.api.RLock;
+import org.redisson.api.RedissonClient;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.autoconfigure.cache.CacheProperties;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Service;
@@ -17,6 +23,7 @@ import org.springframework.util.CollectionUtils;
 import java.math.BigDecimal;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 /**
  * @description:
@@ -80,6 +87,74 @@ public class ManagerServiceImpl implements ManagerService {
     @Autowired
     private RedisTemplate redisTemplate;
 
+    @Autowired
+    private RedissonClient redissonClient;
+
+    /**
+     * 获取分类数据
+     *
+     * @return
+     */
+    @Override
+    public List<JSONObject> getBaseCategoryList() {
+        ArrayList<JSONObject> list = new ArrayList<>();
+
+        List<BaseCategoryView> baseCategoryViewList = baseCategoryViewMapper.selectList(null);
+        Map<Long, List<BaseCategoryView>> category1Map = baseCategoryViewList.stream().collect(Collectors.groupingBy(BaseCategoryView::getCategory1Id));
+
+        int index = 1;
+        for (Map.Entry<Long, List<BaseCategoryView>> entry1 : category1Map.entrySet()) {
+            // 获取一级分类id
+            Long category1Id = entry1.getKey();
+            // 获取一级分类下的所有集合
+            List<BaseCategoryView> category2List = entry1.getValue();
+            JSONObject category1 = new JSONObject();
+            category1.put("index", index);
+            category1.put("categoryId", category1Id);
+            category1.put("categoryName", category2List.get(0).getCategory1Name());
+            index++;
+
+            // 循环获取二级分类数据
+            Map<Long, List<BaseCategoryView>> category2Map  = category2List.stream().collect(Collectors.groupingBy(BaseCategoryView::getCategory2Id));
+            // 声明二级分类对象集合
+            List<JSONObject> category2Child = new ArrayList<>();
+            // 循环遍历
+            for (Map.Entry<Long, List<BaseCategoryView>> entry2  : category2Map.entrySet()) {
+                // 获取二级分类Id
+                Long category2Id  = entry2.getKey();
+                // 获取二级分类下的所有集合
+                List<BaseCategoryView> category3List  = entry2.getValue();
+                // 声明二级分类对象
+                JSONObject category2 = new JSONObject();
+
+                category2.put("categoryId",category2Id);
+                category2.put("categoryName",category3List.get(0).getCategory2Name());
+                // 添加到二级分类集合
+                category2Child.add(category2);
+
+                List<JSONObject> category3Child = new ArrayList<>();
+
+                // 循环三级分类数据
+                category3List.stream().forEach(category3View -> {
+                    JSONObject category3 = new JSONObject();
+                    category3.put("categoryId",category3View.getCategory3Id());
+                    category3.put("categoryName",category3View.getCategory3Name());
+
+                    category3Child.add(category3);
+                });
+
+                // 将三级数据放入二级里面
+                category2.put("categoryChild",category3Child);
+
+            }
+            // 将二级数据放入一级里面
+            category1.put("categoryChild",category2Child);
+            list.add(category1);
+        }
+        return list;
+
+    }
+
     /**
      * 根据skuId 获取平台属性数据
      *
@@ -87,6 +162,7 @@ public class ManagerServiceImpl implements ManagerService {
      * @return
      */
     @Override
+    @GmallCache(prefix = "BaseAttrInfoList:")
     public List<BaseAttrInfo> getAttrListBySkuId(Long skuId) {
         return baseAttrInfoMapper.getAttrListBySkuId(skuId);
     }
@@ -98,6 +174,7 @@ public class ManagerServiceImpl implements ManagerService {
      * @return
      */
     @Override
+    @GmallCache(prefix = "saleAttrValuesBySpu:")
     public Map getSkuValueIdsMap(Long spuId) {
         List<Map> mapList = skuSaleAttrValueMapper.getSkuValueIdsMap(spuId);
         Map<Object, Object> map = new HashMap<>();
@@ -120,6 +197,7 @@ public class ManagerServiceImpl implements ManagerService {
      * @return
      */
     @Override
+    @GmallCache(prefix = "spuSaleAttrListCheckBySku:")
     public List<SpuSaleAttr> getSpuSaleAttrListCheckBySku(Long skuId, Long spuId) {
         return spuSaleAttrMapper.getSpuSaleAttrListCheckBySku(skuId, spuId);
     }
@@ -131,6 +209,7 @@ public class ManagerServiceImpl implements ManagerService {
      * @return
      */
     @Override
+    @GmallCache(prefix = "categoryViewByCategory3Id:")
     public BaseCategoryView getCategoryViewById(Long category3Id) {
         return baseCategoryViewMapper.selectById(category3Id);
     }
@@ -142,6 +221,7 @@ public class ManagerServiceImpl implements ManagerService {
      * @return
      */
     @Override
+    @GmallCache(prefix = "SpuPosterList:")
     public List<SpuPoster> findSpuPosterBySpuId(Long spuId) {
         QueryWrapper<SpuPoster> wrapper = new QueryWrapper<>();
         wrapper.eq("spu_id", spuId);
@@ -157,11 +237,24 @@ public class ManagerServiceImpl implements ManagerService {
      */
     @Override
     public BigDecimal getSkuPriceById(Long skuId) {
-        SkuInfo skuInfo = skuInfoMapper.selectById(skuId);
-        if (skuInfo != null) {
-            return skuInfo.getPrice();
+        RLock lock = redissonClient.getLock(skuId + ":lock");
+        lock.lock();
+
+        SkuInfo skuInfo = null;
+        BigDecimal price = new BigDecimal(0);
+
+
+        try {
+             skuInfo = skuInfoMapper.selectById(skuId);
+            if (skuInfo != null) {
+                price =  skuInfo.getPrice();
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        } finally {
+            lock.unlock();
         }
-        return new BigDecimal("0");
+        return price;
     }
 
     /**
@@ -171,8 +264,66 @@ public class ManagerServiceImpl implements ManagerService {
      * @return
      */
     @Override
+    @GmallCache(prefix = RedisConst.SKUKEY_PREFIX)
     public SkuInfo getSkuInfo(Long skuId) {
 
+        return getSkuInfoDB(skuId);
+    }
+
+    private SkuInfo getSkuInfoRedisson(Long skuId) {
+        SkuInfo skuInfo = null;
+        try {
+            // 定义存储数据的key
+            String skuKey = RedisConst.SKUKEY_PREFIX + skuId + RedisConst.SKUKEY_SUFFIX;
+            // 从缓存中获取数据
+            skuInfo = (SkuInfo) redisTemplate.opsForValue().get(skuKey);
+
+            // 判断从缓存中获取的数据
+            if (skuInfo == null) {
+                // 缓存中不存在数据，需要查询数据。防止出现缓存击穿，上锁
+                // 定义锁的key
+                String lockKey = RedisConst.SKUKEY_PREFIX + skuKey + RedisConst.SKULOCK_SUFFIX;
+                RLock lock = redissonClient.getLock(lockKey);
+                boolean flag = lock.tryLock(RedisConst.SKULOCK_EXPIRE_PX1, RedisConst.SKULOCK_EXPIRE_PX2, TimeUnit.SECONDS);
+                if (flag) {
+                    try {
+                        // 上锁成功
+                        // 从数据库中获取数据
+                        skuInfo = getSkuInfoDB(skuId);
+                        // 判断数据是否空
+                        if (skuInfo == null) {
+                            // 避免发生缓存穿透，将空对象放入缓存
+                            SkuInfo skuInfo1 = new SkuInfo();
+                            redisTemplate.opsForValue().set(skuKey, skuInfo1);
+                            return skuInfo1;
+                        } else {
+                            // 数据库中有值，存入缓存
+                            redisTemplate.opsForValue().set(skuKey, skuInfo);
+                            return skuInfo;
+                        }
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    } finally {
+                        lock.unlock();
+                    }
+                }else {
+                    // 其他线程等待，自旋
+                    // 其他线程等待
+                    Thread.sleep(1000);
+                    return getSkuInfo(skuId);
+                }
+            } else {
+                // 不为空，返回数据
+                return skuInfo;
+            }
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+        // 为了防止缓存宕机，查询数据库
+        return getSkuInfoDB(skuId);
+    }
+
+    private SkuInfo getSkuInfoRedis(Long skuId) {
         SkuInfo skuInfo = null;
         try {
             // 先从缓存中获取数据
@@ -233,7 +384,10 @@ public class ManagerServiceImpl implements ManagerService {
         QueryWrapper<SkuImage> imageQueryWrapper = new QueryWrapper<>();
         imageQueryWrapper.eq("sku_id", skuId);
         List<SkuImage> skuImageList = skuImageMapper.selectList(imageQueryWrapper);
-        skuInfo.setSkuImageList(skuImageList);
+        if (skuInfo != null) {
+            skuInfo.setSkuImageList(skuImageList);
+
+        }
         return skuInfo;
     }
 

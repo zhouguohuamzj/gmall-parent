@@ -1,5 +1,7 @@
 package com.atguigu.gmall.product.controller.api;
 
+import com.alibaba.fastjson.JSONObject;
+import com.atguigu.gmall.common.result.Result;
 import com.atguigu.gmall.model.product.*;
 import com.atguigu.gmall.product.service.ManagerService;
 import com.google.j2objc.annotations.AutoreleasePool;
@@ -27,6 +29,13 @@ public class ProductApiController {
 
     @Autowired
     private ManagerService managerService;
+
+    @ApiOperation("获取首页分类数据")
+    @GetMapping("getBaseCategoryList")
+    public Result getBaseCategoryList() {
+        List<JSONObject> data = managerService.getBaseCategoryList();
+        return Result.ok(data);
+    }
 
 
     @ApiOperation("根据skuId获取SkuInfo与图片信息")
@@ -58,7 +67,7 @@ public class ProductApiController {
     @ApiOperation("根据spuId,skuId 获取销售属性数据,标志已选中的值")
     @GetMapping("getSpuSaleAttrListCheckBySku/{skuId}/{spuId}")
     public List<SpuSaleAttr> getSpuSaleAttrListCheckBySku(@PathVariable Long skuId,
-                                                    @PathVariable Long spuId) {
+                                                          @PathVariable Long spuId) {
 
         return managerService.getSpuSaleAttrListCheckBySku(skuId, spuId);
     }
@@ -72,7 +81,7 @@ public class ProductApiController {
 
     @ApiOperation("根据skuId 获取平台属性数据")
     @GetMapping("getAttrList/{skuId}")
-    public List<BaseAttrInfo> getAttrList(@PathVariable Long skuId){
+    public List<BaseAttrInfo> getAttrList(@PathVariable Long skuId) {
 
         return managerService.getAttrListBySkuId(skuId);
     }

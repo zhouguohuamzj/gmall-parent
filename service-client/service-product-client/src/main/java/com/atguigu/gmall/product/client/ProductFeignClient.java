@@ -1,7 +1,9 @@
 package com.atguigu.gmall.product.client;
 
+import com.atguigu.gmall.common.result.Result;
 import com.atguigu.gmall.model.product.*;
 import com.atguigu.gmall.product.client.fallback.ProductDegradeFeignClient;
+import io.swagger.annotations.ApiOperation;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.stereotype.Service;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -14,6 +16,11 @@ import java.util.Map;
 @Service
 @FeignClient(value ="service-product", fallback = ProductDegradeFeignClient.class)
 public interface ProductFeignClient {
+
+
+    @ApiOperation("获取首页分类数据")
+    @GetMapping("/api/product/inner/getBaseCategoryList")
+    public Result getBaseCategoryList();
 
     /**
      * 根据skuId获取sku信息
