@@ -12,6 +12,13 @@
     <artifactId>service-gateway</artifactId>
 
     <dependencies>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis-reactive</artifactId>
+        </dependency>
+
+
         <dependency>
             <groupId>com.atguigu.gmall</groupId>
             <artifactId>common-util</artifactId>

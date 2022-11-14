@@ -3,6 +3,7 @@ package com.atguigu.gmall.product.controller.api;
 import com.alibaba.fastjson.JSONObject;
 import com.atguigu.gmall.common.result.Result;
 import com.atguigu.gmall.model.product.*;
+import com.atguigu.gmall.product.service.BaseTrademarkService;
 import com.atguigu.gmall.product.service.ManagerService;
 import com.google.j2objc.annotations.AutoreleasePool;
 import io.swagger.annotations.ApiOperation;
@@ -29,6 +30,23 @@ public class ProductApiController {
 
     @Autowired
     private ManagerService managerService;
+
+    @Autowired
+    private BaseTrademarkService trademarkService;
+
+
+    /**
+     * 通过品牌Id 集合来查询数据
+     * @param tmId
+     * @return
+     */
+    @ApiOperation("通过品牌Id 集合来查询数据")
+    @GetMapping("getTrademark/{tmId}")
+    public BaseTrademark getTrademark(@PathVariable("tmId")Long tmId){
+        return trademarkService.getTrademarkByTmId(tmId);
+    }
+
+
 
     @ApiOperation("获取首页分类数据")
     @GetMapping("getBaseCategoryList")

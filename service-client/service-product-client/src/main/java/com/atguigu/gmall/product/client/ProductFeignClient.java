@@ -18,6 +18,12 @@ import java.util.Map;
 public interface ProductFeignClient {
 
 
+    @ApiOperation("通过品牌Id 集合来查询数据")
+    @GetMapping("/api/product/inner/getTrademark/{tmId}")
+    public BaseTrademark getTrademark(@PathVariable("tmId")Long tmId);
+
+
+
     @ApiOperation("获取首页分类数据")
     @GetMapping("/api/product/inner/getBaseCategoryList")
     public Result getBaseCategoryList();

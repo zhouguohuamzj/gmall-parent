@@ -23,15 +23,6 @@ public class ItemController {
     @Autowired
     private ProductFeignClient productFeignClient;
 
-    @GetMapping({"/","index.html"})
-    public String index(HttpServletRequest request){
-        // 获取首页分类数据
-        Result result = productFeignClient.getBaseCategoryList();
-        request.setAttribute("list",result.getData());
-        return "index/index";
-    }
-
-
     /**
      * sku详情页面
           * @param skuId

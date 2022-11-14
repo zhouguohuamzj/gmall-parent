@@ -20,4 +20,15 @@ public class BaseTrademarkServiceImpl extends ServiceImpl<BaseTrademarkMapper, B
 
     @Autowired
     private BaseTrademarkMapper baseTrademarkMapper;
+
+    /**
+     * 通过品牌Id 集合来查询数据
+     *
+     * @param tmId
+     * @return
+     */
+    @Override
+    public BaseTrademark getTrademarkByTmId(Long tmId) {
+        return baseTrademarkMapper.selectById(tmId);
+    }
 }
